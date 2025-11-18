@@ -31,3 +31,12 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local sensitive / generated
+token.txt
+uploads/
+.DS_Store
+*.log
+.env
+.idea/
+.vscode/
