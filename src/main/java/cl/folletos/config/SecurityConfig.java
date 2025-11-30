@@ -34,8 +34,8 @@ public class SecurityConfig {
             .authorizeHttpRequests(authorize -> authorize
                 // Public: home, listado y recursos estáticos
                 .requestMatchers(HttpMethod.GET, "/", "/css/**", "/js/**", "/webjars/**", "/default-ui.css", "/favicon.ico", "/error", "/login").permitAll()
-                // Lectura de detalle/listado pública (folletos)
-                .requestMatchers(HttpMethod.GET, "/contactos/**", "/folletos/**", "/files/**", "/api/**").permitAll()
+                // Lectura de detalle/listado pública (folletos y música)
+                .requestMatchers(HttpMethod.GET, "/contactos/**", "/folletos/**", "/files/**", "/api/**", "/musica/**").permitAll()
                 // Rutas de administración (solo ADMIN)
                 .requestMatchers(HttpMethod.GET, "/agregar", "/editar/**", "/eliminar/**").hasRole("ADMIN")
                 .requestMatchers(HttpMethod.POST, "/agregar", "/editar", "/eliminar/**").hasRole("ADMIN")

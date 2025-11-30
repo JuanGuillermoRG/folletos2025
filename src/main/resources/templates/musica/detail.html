@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="es" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragmentos/cabecero :: cabecero-seccion(titulo='Detalle de Álbum')}"></head>
+<body>
+<div th:replace="~{fragmentos/navegacion::navegacion-seccion}"></div>
+<div class="container mt-4">
+    <h3 th:text="${musica.titulo}">Álbum</h3>
+
+    <div th:if="${archivos==null or #lists.isEmpty(archivos)}">
+        <p>No hay pistas en este álbum.</p>
+        <div sec:authorize="hasRole('ROLE_ADMIN')">
+            <a class="btn btn-primary" th:href="@{/admin/musica/upload}">Subir pistas a este álbum</a>
+        </div>
+    </div>
+
+    <div th:if="${archivos!=null and !#lists.isEmpty(archivos)}">
+        <table class="table table-striped">
+            <thead><tr><th>#</th><th>Archivo</th><th>Acciones</th></tr></thead>
+            <tbody>
+                <tr th:each="fn,iterStat : ${archivos}">
+                    <td th:text="${iterStat.index + 1}"></td>
+                    <td th:text="${fn}"></td>
+                    <td>
+                        <audio th:attr="controls='controls'" style="max-width:320px; display:block; margin-bottom:6px;">
+                            <source th:src="@{/musica/files/{id}/{file}(id=${musica.id},file=${fn})}" th:type="${fn.endsWith('.m4a') ? 'audio/mp4' : (fn.endsWith('.ogg') ? 'audio/ogg' : (fn.endsWith('.wav') ? 'audio/wav' : 'audio/mpeg'))}" />
+                            Your browser does not support the audio element.
+                        </audio>
+                        <a class="btn btn-sm btn-outline-secondary me-1" th:href="@{/musica/files/{id}/{file}(id=${musica.id},file=${fn},download=true)}">Descargar</a>
+                        <form th:action="@{/admin/musica/delete/{id}(id=${musica.id})}" method="post" style="display:inline;" sec:authorize="hasRole('ROLE_ADMIN')" onsubmit="return confirm('¿Eliminar este álbum y todos sus archivos?');">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+                            <button type="submit" class="btn btn-sm btn-outline-danger">Eliminar álbum</button>
+                        </form>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+        <div sec:authorize="hasRole('ROLE_ADMIN')">
+            <a class="btn btn-sm btn-primary" th:href="@{/admin/musica/upload}">Subir más pistas</a>
+        </div>
+    </div>
+
+    <div class="mt-3">
+        <a class="btn btn-secondary" th:href="@{/musica}">Volver al listado</a>
+    </div>
+</div>
+<div th:replace="~{fragmentos/pie-pagina :: pie-pagina-seccion}"></div>
+</body>
+</html>

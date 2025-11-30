@@ -14,10 +14,12 @@
 				</button>
 				<div class="collapse navbar-collapse" id="navbarNavAltMarkup">
 					<div class="navbar-nav">
-						<a class="nav-link" href="/folletos/combinados">Folletos Combinados</a>
+						<a class="nav-link" href="/folletos/combinados">Folletos Compaginados</a>
 						<a class="nav-link" href="/folletos/locales">Folletos Locales</a>
+						<a class="nav-link" href="/musica">Musica</a>
 						<!-- Admin Folletos visible solo para administradores -->
 						<a class="nav-link" href="/admin/folletos/add" sec:authorize="hasRole('ROLE_ADMIN')">Admin Folletos</a>
+						<a class="nav-link" href="/admin/musica/upload" sec:authorize="hasRole('ROLE_ADMIN')">Admin Musica</a>
 						<a class="nav-link" href="/login" sec:authorize="isAnonymous()">Login</a>
 					</div>
 				</div>

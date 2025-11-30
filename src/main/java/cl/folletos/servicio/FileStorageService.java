@@ -91,4 +91,41 @@ public class FileStorageService {
         Path file = this.rootLocation.resolve(String.valueOf(folletoId)).resolve(filename).normalize();
         return Files.deleteIfExists(file);
     }
+
+    // New: store raw bytes (downloaded from URL or other source) as if it were an uploaded file
+    public String storeBytes(Long folletoId, byte[] data, String originalFilename, String prefix, String contentType) throws IOException {
+        if (data == null || data.length == 0) return null;
+        if (data.length > maxSizeBytes) throw new IOException("El archivo excede el tamaño máximo permitido: " + data.length);
+
+        String original = originalFilename == null ? "file" : StringUtils.cleanPath(originalFilename);
+        String ext = "";
+        int dot = original.lastIndexOf('.');
+        if (dot >= 0) ext = original.substring(dot).toLowerCase();
+
+        boolean ok = false;
+        String ct = contentType == null ? "" : contentType.toLowerCase();
+        if ("audio".equalsIgnoreCase(prefix)) {
+            if (ct != null && allowedAudio.contains(ct)) ok = true;
+            if (!ok && (".mp3".equals(ext) || ".ogg".equals(ext) || ".wav".equals(ext) || ".m4a".equals(ext) || ".aac".equals(ext))) ok = true;
+            if (!ok) throw new IOException("Tipo de archivo de audio no permitido: " + contentType);
+        } else if ("pdf".equalsIgnoreCase(prefix)) {
+            if (ct != null && allowedPdf.contains(ct)) ok = true;
+            if (!ok && ".pdf".equals(ext)) ok = true;
+            if (!ok) throw new IOException("Tipo de archivo PDF no permitido: " + contentType);
+        } else if ("cover".equalsIgnoreCase(prefix)) {
+            if (ct != null && allowedImages.contains(ct)) ok = true;
+            if (!ok && (".jpg".equals(ext) || ".jpeg".equals(ext) || ".png".equals(ext) || ".webp".equals(ext))) ok = true;
+            if (!ok) throw new IOException("Tipo de imagen no permitido: " + contentType);
+        }
+
+        String filename = prefix + "_" + UUID.randomUUID().toString() + (ext.isEmpty() ? "" : ext);
+        Path dir = this.rootLocation.resolve(String.valueOf(folletoId));
+        Files.createDirectories(dir);
+        Path target = dir.resolve(filename);
+        Files.write(target, data);
+
+        try { Files.setAttribute(target, "dos:readonly", false); } catch (Exception ex) { /* ignore */ }
+
+        return filename;
+    }
 }

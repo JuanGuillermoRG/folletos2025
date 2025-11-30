@@ -307,7 +307,8 @@ public class FolletoControlador {
             contentType = "audio/mpeg";
         } else if ("cover".equalsIgnoreCase(type)) {
             filename = f.getCoverFilename();
-            contentType = Files.probeContentType(Paths.get(filename)) == null ? MediaType.IMAGE_JPEG_VALUE : Files.probeContentType(Paths.get(filename));
+            // leave contentType to be determined after we have the actual file path
+            contentType = MediaType.IMAGE_JPEG_VALUE;
         }
         if (filename == null) return ResponseEntity.notFound().build();
         Resource resource = storageService.loadAsResource(id, filename);
@@ -315,6 +316,24 @@ public class FolletoControlador {
 
         Path filePath = Paths.get(resource.getURI());
         long fileLength = Files.size(filePath);
+
+        // Determine content-type for cover using the real file path (probe may return null)
+        if ("cover".equalsIgnoreCase(type)) {
+            try {
+                String probed = Files.probeContentType(filePath);
+                if (probed != null && !probed.isBlank()) {
+                    contentType = probed;
+                } else {
+                    // fallback to common image types based on extension
+                    String name = filePath.getFileName().toString().toLowerCase();
+                    if (name.endsWith(".png")) contentType = "image/png";
+                    else if (name.endsWith(".webp")) contentType = "image/webp";
+                    else contentType = MediaType.IMAGE_JPEG_VALUE;
+                }
+            } catch (IOException ex) {
+                // keep default contentType (image/jpeg) if probe fails
+            }
+        }
 
         // inline unless download=true
         inline = !download;
