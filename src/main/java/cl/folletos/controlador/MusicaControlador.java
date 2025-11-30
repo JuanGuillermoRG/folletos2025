@@ -442,4 +442,30 @@ public class MusicaControlador {
         }
         return u;
     }
+
+    @PreAuthorize("hasRole('ADMIN')")
+    @PostMapping("/admin/musica/{id}/delete-file")
+    public String eliminarArchivo(@PathVariable Long id, @RequestParam("filename") String filename, Model model) {
+        Optional<Musica> opt = musicaServicio.porId(id);
+        if (opt.isEmpty()) return "redirect:/musica";
+        Musica album = opt.get();
+        try {
+            // attempt to delete physical file (ignore failure but log)
+            try { storageService.deleteFile(album.getId(), filename); } catch (IOException e) { logger.warn("No se pudo borrar archivo físico {}: {}", filename, e.getMessage()); }
+
+            String existing = album.getAudioFilenames() == null ? "" : album.getAudioFilenames();
+            List<String> list = Arrays.stream(existing.split(",")).map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+            boolean removed = list.removeIf(s -> s.equals(filename));
+            if (removed) {
+                album.setAudioFilenames(list.isEmpty() ? null : String.join(",", list));
+                musicaServicio.guardar(album);
+            }
+        } catch (Exception ex) {
+            logger.error("Error eliminando pista {} del álbum {}: {}", filename, id, ex.getMessage(), ex);
+            model.addAttribute("errorMessage", "Error eliminando pista: " + ex.getMessage());
+            model.addAttribute("musica", album);
+            return "musica/detail";
+        }
+        return "redirect:/musica/" + id;
+    }
 }
