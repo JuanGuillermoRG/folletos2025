@@ -5,6 +5,10 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.CascadeType;
+import java.util.ArrayList;
+import java.util.List;
 
 @Entity
 public class Musica {
@@ -19,9 +23,9 @@ public class Musica {
     @Lob
     private String descripcion;
 
-    // Comma-separated list of archivos de audio (nombres de archivo tal como se guardan en disco)
-    @Lob
-    private String audioFilenames;
+    // Remove legacy comma-separated filenames and use related AudioTrack entities
+    @OneToMany(mappedBy = "musica", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<AudioTrack> tracks = new ArrayList<>();
 
     public Musica() {}
 
@@ -37,6 +41,6 @@ public class Musica {
     public String getDescripcion() { return descripcion; }
     public void setDescripcion(String descripcion) { this.descripcion = descripcion; }
 
-    public String getAudioFilenames() { return audioFilenames; }
-    public void setAudioFilenames(String audioFilenames) { this.audioFilenames = audioFilenames; }
+    public List<AudioTrack> getTracks() { return tracks; }
+    public void setTracks(List<AudioTrack> tracks) { this.tracks = tracks; }
 }

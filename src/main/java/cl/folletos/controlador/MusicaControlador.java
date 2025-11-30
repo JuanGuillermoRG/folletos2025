@@ -37,8 +37,11 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseBody;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.util.StringUtils;
 
 import cl.folletos.modelo.Musica;
+import cl.folletos.modelo.AudioTrack;
+import cl.folletos.repositorio.AudioTrackRepositorio;
 import cl.folletos.servicio.MusicaServicio;
 import cl.folletos.servicio.FileStorageService;
 
@@ -53,6 +56,9 @@ public class MusicaControlador {
     @Autowired
     private FileStorageService storageService;
 
+    @Autowired
+    private AudioTrackRepositorio trackRepo;
+
     @GetMapping("/musica")
     public String listar(Model model) {
         List<Musica> lista = musicaServicio.listarTodos();
@@ -65,8 +71,8 @@ public class MusicaControlador {
         Optional<Musica> m = musicaServicio.porId(id);
         if (m.isEmpty()) return "redirect:/musica";
         Musica musica = m.get();
-        List<String> archivos = musica.getAudioFilenames() == null || musica.getAudioFilenames().isBlank() ? List.of()
-                : Arrays.stream(musica.getAudioFilenames().split(",")).map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
+        // Load AudioTrack entities for this album
+        List<AudioTrack> archivos = trackRepo.findByMusicaIdOrderByIdAsc(musica.getId());
         model.addAttribute("musica", musica);
         model.addAttribute("archivos", archivos);
         return "musica/detail";
@@ -85,19 +91,23 @@ public class MusicaControlador {
         try {
             Musica saved = musicaServicio.guardar(musica);
             Long id = saved.getId();
+            final Musica savedRef = new Musica(); savedRef.setId(id);
             if (audioFiles != null && audioFiles.length > 0) {
-                List<String> stored = Arrays.stream(audioFiles).filter(f -> f != null && !f.isEmpty()).map(f -> {
+                Arrays.stream(audioFiles).filter(f -> f != null && !f.isEmpty()).forEach(f -> {
                     try {
-                        return storageService.storeFile(id, f, "audio");
+                        String orig = StringUtils.cleanPath(f.getOriginalFilename());
+                        AudioTrack t = new AudioTrack();
+                        t.setOriginalName(orig);
+                        t.setMusica(savedRef);
+                        t = trackRepo.save(t); // generate id
+                        String filename = storageService.computeFilenameWithId(orig, t.getId());
+                        storageService.storeFileWithGivenName(id, f, filename, "audio");
+                        t.setFilename(filename);
+                        trackRepo.save(t);
                     } catch (IOException e) {
                         logger.error("Error guardando archivo de audio: {}", e.getMessage());
-                        return null;
                     }
-                }).filter(s -> s != null).collect(Collectors.toList());
-                if (!stored.isEmpty()) {
-                    saved.setAudioFilenames(String.join(",", stored));
-                    musicaServicio.guardar(saved);
-                }
+                });
             }
             return "redirect:/musica/" + id;
         } catch (Exception ex) {
@@ -123,24 +133,27 @@ public class MusicaControlador {
         Optional<Musica> opt = musicaServicio.porId(musica.getId());
         if (opt.isEmpty()) return "redirect:/musica";
         Musica existing = opt.get();
+        final Musica existingRef = new Musica(); existingRef.setId(existing.getId());
         existing.setTitulo(musica.getTitulo());
         existing.setAno(musica.getAno());
         existing.setDescripcion(musica.getDescripcion());
         try {
             if (audioFiles != null && audioFiles.length > 0) {
-                List<String> stored = Arrays.stream(audioFiles).filter(f -> f != null && !f.isEmpty()).map(f -> {
+                Arrays.stream(audioFiles).filter(f -> f != null && !f.isEmpty()).forEach(f -> {
                     try {
-                        return storageService.storeFile(existing.getId(), f, "audio");
+                        String orig = StringUtils.cleanPath(f.getOriginalFilename());
+                        AudioTrack t = new AudioTrack();
+                        t.setOriginalName(orig);
+                        t.setMusica(existingRef);
+                        t = trackRepo.save(t);
+                        String filename = storageService.computeFilenameWithId(orig, t.getId());
+                        storageService.storeFileWithGivenName(existing.getId(), f, filename, "audio");
+                        t.setFilename(filename);
+                        trackRepo.save(t);
                     } catch (IOException e) {
                         logger.error("Error guardando archivo de audio: {}", e.getMessage());
-                        return null;
                     }
-                }).filter(s -> s != null).collect(Collectors.toList());
-                if (!stored.isEmpty()) {
-                    String existingList = existing.getAudioFilenames() == null ? "" : existing.getAudioFilenames();
-                    String combined = existingList.isBlank() ? String.join(",", stored) : existingList + "," + String.join(",", stored);
-                    existing.setAudioFilenames(combined);
-                }
+                });
             }
             musicaServicio.guardar(existing);
             return "redirect:/musica/" + existing.getId();
@@ -158,10 +171,9 @@ public class MusicaControlador {
         Optional<Musica> opt = musicaServicio.porId(id);
         if (opt.isPresent()) {
             Musica m = opt.get();
-            if (m.getAudioFilenames() != null) {
-                Arrays.stream(m.getAudioFilenames().split(",")).map(String::trim).filter(s -> !s.isEmpty()).forEach(fn -> {
-                    try { storageService.deleteFile(m.getId(), fn); } catch (IOException e) { /* ignore */ }
-                });
+            List<AudioTrack> tracks = trackRepo.findByMusicaIdOrderByIdAsc(m.getId());
+            for (AudioTrack t : tracks) {
+                try { storageService.deleteFile(m.getId(), t.getFilename()); } catch (IOException e) { /* ignore */ }
             }
             musicaServicio.eliminar(m);
         }
@@ -255,22 +267,26 @@ public class MusicaControlador {
 
             List<String> allStored = new java.util.ArrayList<>();
             final Long albumIdForStorage = album.getId();
+            final Musica albumRef = new Musica(); albumRef.setId(albumIdForStorage);
 
             // multipart file uploads
             if (audioFiles != null && audioFiles.length > 0) {
-                List<String> stored = Arrays.stream(audioFiles)
-                        .filter(f -> f != null && !f.isEmpty())
-                        .map(f -> {
-                            try {
-                                return storageService.storeFile(albumIdForStorage, f, "audio");
-                            } catch (IOException e) {
-                                logger.error("Error guardando archivo de audio: {}", e.getMessage());
-                                return null;
-                            }
-                        })
-                        .filter(s -> s != null)
-                        .collect(Collectors.toList());
-                allStored.addAll(stored);
+                Arrays.stream(audioFiles).filter(f -> f != null && !f.isEmpty()).forEach(f -> {
+                    try {
+                        String orig = StringUtils.cleanPath(f.getOriginalFilename());
+                        AudioTrack t = new AudioTrack();
+                        t.setOriginalName(orig);
+                        t.setMusica(albumRef);
+                        t = trackRepo.save(t);
+                        String filename = storageService.computeFilenameWithId(orig, t.getId());
+                        storageService.storeFileWithGivenName(albumIdForStorage, f, filename, "audio");
+                        t.setFilename(filename);
+                        trackRepo.save(t);
+                        allStored.add(filename);
+                    } catch (IOException e) {
+                        logger.error("Error guardando archivo de audio: {}", e.getMessage());
+                    }
+                });
             }
 
             // external URLs (OneDrive/Dropbox) - multiple separated by newline or comma
@@ -315,8 +331,16 @@ public class MusicaControlador {
                                 filename = URLDecoder.decode(path.substring(path.lastIndexOf('/') + 1), StandardCharsets.UTF_8.name());
                             }
                             if (filename == null || filename.isBlank()) filename = "from_url";
-                            String storedName = storageService.storeBytes(albumIdForStorage, data, filename, "audio", contentType);
-                            if (storedName != null) allStored.add(storedName);
+                            // create DB record first to obtain id
+                            AudioTrack t = new AudioTrack();
+                            t.setOriginalName(filename);
+                            t.setMusica(album);
+                            t = trackRepo.save(t);
+                            String storedFilename = storageService.computeFilenameWithId(filename, t.getId());
+                            storageService.storeBytesWithGivenName(albumIdForStorage, data, storedFilename, "audio", contentType);
+                            t.setFilename(storedFilename);
+                            trackRepo.save(t);
+                            allStored.add(storedFilename);
                         }
                     } catch (Exception e) {
                         logger.error("Error descargando y guardando desde URL {}: {}", urlStr, e.getMessage());
@@ -324,12 +348,8 @@ public class MusicaControlador {
                 }
             }
 
-            if (!allStored.isEmpty()) {
-                String existingList = album.getAudioFilenames() == null ? "" : album.getAudioFilenames();
-                String combined = existingList.isBlank() ? String.join(",", allStored) : existingList + "," + String.join(",", allStored);
-                album.setAudioFilenames(combined);
-                musicaServicio.guardar(album);
-            }
+            // tracks were persisted individually; nothing else required. Save album to update relationships if needed.
+            if (!allStored.isEmpty()) musicaServicio.guardar(album);
 
             return "redirect:/musica/" + album.getId();
         } catch (Exception ex) {
@@ -395,21 +415,23 @@ public class MusicaControlador {
                         String filename = p.getFileName().toString();
                         String contentType = Files.probeContentType(p);
                         byte[] data = Files.readAllBytes(p);
-                        // store only if valid audio per FileStorageService
-                        String stored = storageService.storeBytes(albumIdForStorage, data, filename, "audio", contentType);
-                        if (stored != null) storedList.add(stored);
+                        // create DB record to get id
+                        AudioTrack t = new AudioTrack();
+                        t.setOriginalName(filename);
+                        t.setMusica(album);
+                        t = trackRepo.save(t);
+                        String storedFilename = storageService.computeFilenameWithId(filename, t.getId());
+                        storageService.storeBytesWithGivenName(albumIdForStorage, data, storedFilename, "audio", contentType);
+                        t.setFilename(storedFilename);
+                        trackRepo.save(t);
+                        storedList.add(storedFilename);
                     } catch (Exception e) {
                         logger.error("Error importando archivo {} desde carpeta {}: {}", p.toString(), folderPath, e.getMessage());
                     }
                 });
             }
 
-            if (!storedList.isEmpty()) {
-                String existing = album.getAudioFilenames() == null ? "" : album.getAudioFilenames();
-                String combined = existing.isBlank() ? String.join(",", storedList) : existing + "," + String.join(",", storedList);
-                album.setAudioFilenames(combined);
-                musicaServicio.guardar(album);
-            }
+            if (!storedList.isEmpty()) musicaServicio.guardar(album);
 
             return "redirect:/musica/" + album.getId();
         } catch (Exception ex) {
@@ -450,15 +472,18 @@ public class MusicaControlador {
         if (opt.isEmpty()) return "redirect:/musica";
         Musica album = opt.get();
         try {
-            // attempt to delete physical file (ignore failure but log)
-            try { storageService.deleteFile(album.getId(), filename); } catch (IOException e) { logger.warn("No se pudo borrar archivo físico {}: {}", filename, e.getMessage()); }
-
-            String existing = album.getAudioFilenames() == null ? "" : album.getAudioFilenames();
-            List<String> list = Arrays.stream(existing.split(",")).map(String::trim).filter(s -> !s.isEmpty()).collect(Collectors.toList());
-            boolean removed = list.removeIf(s -> s.equals(filename));
-            if (removed) {
-                album.setAudioFilenames(list.isEmpty() ? null : String.join(",", list));
-                musicaServicio.guardar(album);
+            // If the filename is a URL (external link), treat specially
+            if (filename.startsWith("http://") || filename.startsWith("https://")) {
+                AudioTrack t = trackRepo.findByFilename(filename);
+                if (t != null && t.getMusica() != null && t.getMusica().getId().equals(id)) {
+                    trackRepo.delete(t);
+                }
+            } else {
+                try { storageService.deleteFile(album.getId(), filename); } catch (IOException e) { logger.warn("No se pudo borrar archivo físico {}: {}", filename, e.getMessage()); }
+                AudioTrack t = trackRepo.findByFilename(filename);
+                if (t != null && t.getMusica() != null && t.getMusica().getId().equals(id)) {
+                    trackRepo.delete(t);
+                }
             }
         } catch (Exception ex) {
             logger.error("Error eliminando pista {} del álbum {}: {}", filename, id, ex.getMessage(), ex);
